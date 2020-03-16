@@ -239,7 +239,7 @@ class Solver:
 
     def test(self, task_model, vae, discriminator):
         task_model.eval()
-        total, correct = 0, 0
+        total, correct1, correct2, app = 0, 0, 0, 0
         for batch_idx, (imgs, labels) in enumerate(self.test_dataloader):
             if self.args.cuda:
                 imgs = imgs.cuda()
@@ -249,18 +249,19 @@ class Solver:
                 _, _, mu, _ = vae(imgs)
                 # preds = task_model(mu)
                 labeled_preds = discriminator(mu)
-                jump = labeled_preds.gt(0.5).squeeze()
                 preds = task_model(imgs)
-                
 
+            jump = labeled_preds.gt(0.5).squeeze()    
+            app += jump.sum().item()
             
             _, predicted = preds.max(1)
             total += imgs.size(0)
-            correct += (predicted.eq(labels) | jump).sum().item() 
-            utils.progress_bar(batch_idx, len(self.test_dataloader), 'Acc: %.3f%% (%d/%d)'
-                % (100.*correct/total, correct, total))
+            correct1 += predicted.eq(labels).sum().item() 
+            correct2 += (predicted.eq(labels) | ~jump).sum().item()
+            utils.progress_bar(batch_idx, len(self.test_dataloader), 'Acc1:%.3f%%(%d)|Acc2:%.3f%%(%d)|J:%.3f%% (%d)|%d'
+                % (100.*correct1/total, correct1, 100.*correct2/total, correct2, 100.*app/total, app, total))
 
-        return correct / total * 100
+        return correct2 / total * 100
 
 
     def vae_loss(self, x, recon, mu, logvar, beta):
