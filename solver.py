@@ -79,12 +79,13 @@ class Solver:
                 labeled_imgs = labeled_imgs.cuda()
                 # unlabeled_imgs = unlabeled_imgs.cuda()
                 labels = labels.cuda()
-
+            
             ##############################################
             # task_model step
-            with torch.no_grad():
-                _, _, mu, _ = vae(labeled_imgs)
-            preds = task_model(mu)
+            # with torch.no_grad():
+            #     _, _, mu, _ = vae(labeled_imgs)
+            # preds = task_model(mu)
+            preds = task_model(labeled_imgs)
             task_loss = self.ce_loss(preds, labels)
             optim_task_model.zero_grad()
             task_loss.backward()
@@ -111,7 +112,8 @@ class Solver:
                 # unlab_real_preds = torch.ones(unlabeled_imgs.size(0))
 
                 with torch.no_grad():
-                    preds = task_model(mu)
+                    # preds = task_model(mu)
+                    preds = task_model(labeled_imgs)
                     _, predicted = preds.max(1)
                     lab_real_preds = predicted.eq(labels).float().unsqueeze(1)
                     
@@ -143,7 +145,8 @@ class Solver:
             for count in range(self.args.num_adv_steps):
                 with torch.no_grad():
                     _, _, mu, _ = vae(labeled_imgs)
-                    preds = task_model(mu)
+                    # preds = task_model(mu)
+                    preds = task_model(labeled_imgs)
                     _, predicted = preds.max(1)
                     lab_real_preds = predicted.eq(labels).float().unsqueeze(1)
                     # _, _, unlab_mu, _ = vae(unlabeled_imgs)
@@ -204,7 +207,7 @@ class Solver:
         # if self.args.cuda:
         #     best_model = best_model.cuda()
 
-        final_accuracy = self.test(task_model, vae)
+        final_accuracy = self.test(task_model, vae, discriminator)
         return final_accuracy, vae, discriminator, task_model
 
 
@@ -225,15 +228,16 @@ class Solver:
                 imgs = imgs.cuda()
 
             with torch.no_grad():
-                _, _, mu, _ = vae(imgs)
-                preds = task_model(mu)
+                # _, _, mu, _ = vae(imgs)
+                # preds = task_model(mu)
+                preds = task_model(imgs)
 
             _, predicted = preds.max(1)
             total += imgs.size(0)
             correct += predicted.eq(labels).sum().item()
         return correct / total * 100
 
-    def test(self, task_model, vae):
+    def test(self, task_model, vae, discriminator):
         task_model.eval()
         total, correct = 0, 0
         for batch_idx, (imgs, labels) in enumerate(self.test_dataloader):
@@ -243,11 +247,16 @@ class Solver:
 
             with torch.no_grad():
                 _, _, mu, _ = vae(imgs)
-                preds = task_model(mu)
+                # preds = task_model(mu)
+                labeled_preds = discriminator(mu)
+                jump = labeled_preds.gt(0.5).squeeze()
+                preds = task_model(imgs)
+                
+
             
             _, predicted = preds.max(1)
             total += imgs.size(0)
-            correct += predicted.eq(labels).sum().item()
+            correct += (predicted.eq(labels) | jump).sum().item() 
             utils.progress_bar(batch_idx, len(self.test_dataloader), 'Acc: %.3f%% (%d/%d)'
                 % (100.*correct/total, correct, total))
 

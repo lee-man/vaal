@@ -67,19 +67,20 @@ def main(args):
     args.cuda = torch.cuda.is_available()
 
     all_indices = set(np.arange(args.num_images))
-    val_indices = random.sample(all_indices, args.num_val)
-    all_indices = np.setdiff1d(list(all_indices), val_indices)
+    # val_indices = random.sample(all_indices, args.num_val)
+    # all_indices = np.setdiff1d(list(all_indices), val_indices)
 
     # initial_indices = random.sample(list(all_indices), args.initial_budget)
     # sampler = data.sampler.SubsetRandomSampler(initial_indices)
-    sampler = data.sampler.SubsetRandomSampler(all_indices)
-    val_sampler = data.sampler.SubsetRandomSampler(val_indices)
+    sampler = data.sampler.SubsetRandomSampler(list(all_indices))
+    # val_sampler = data.sampler.SubsetRandomSampler(val_indices)
 
     # dataset with labels available
     querry_dataloader = data.DataLoader(train_dataset, sampler=sampler, 
             batch_size=args.batch_size, drop_last=True)
-    val_dataloader = data.DataLoader(train_dataset, sampler=val_sampler,
-            batch_size=args.batch_size, drop_last=False)
+    # val_dataloader = data.DataLoader(train_dataset, sampler=val_sampler,
+    #        batch_size=args.batch_size, drop_last=False)
+    val_dataloader = None
             
     args.cuda = args.cuda and torch.cuda.is_available()
     solver = Solver(args, test_dataloader)
@@ -92,7 +93,9 @@ def main(args):
     # accuracies = []
     
     print('==> Building models...')
-    task_model = model.Approximator(args.latent_dim, args.num_classes)
+
+    task_model = vgg.vgg16_bn(num_classes=args.num_classes)
+    # task_model = model.Approximator(args.latent_dim, args.num_classes)
     vae = model.VAE(args.latent_dim)
     discriminator = model.Discriminator(args.latent_dim)
 
