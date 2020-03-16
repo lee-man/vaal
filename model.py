@@ -107,6 +107,29 @@ class Discriminator(nn.Module):
     def forward(self, z):
         return self.net(z)
 
+class Approximator(nn.Module):
+    '''Approximator architecture (attached behind encoder) for classification task'''
+    def __init__(self, z_dim=10, num_classes=10):
+        super(Approximator, self).__init__()
+        self.net = nn.Sequential(
+            nn.Linear(z_dim, 512),
+            nn.ReLU(True),
+            nn.Dropout(),
+            nn.Linear(512, 512),
+            nn.ReLU(True),
+            nn.Dropout(),
+            nn.Linear(512, num_classes)
+        )
+        self.weight_init()
+        
+    def weight_init(self):
+        for block in self._modules:
+            for m in self._modules[block]:
+                kaiming_init(m)
+
+    def forward(self, z):
+        return self.net(z)
+    
 
 def kaiming_init(m):
     if isinstance(m, (nn.Linear, nn.Conv2d)):

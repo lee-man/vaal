@@ -64,6 +64,8 @@ def main(args):
     else:
         raise NotImplementedError
 
+    args.cuda = torch.cuda.is_available()
+
     all_indices = set(np.arange(args.num_images))
     val_indices = random.sample(all_indices, args.num_val)
     all_indices = np.setdiff1d(list(all_indices), val_indices)

@@ -40,13 +40,13 @@ class Solver:
     def train(self, epoch, querry_dataloader, val_dataloader, task_model, vae, discriminator, unlabeled_dataloader):
         # self.args.train_iterations = (self.args.num_images * self.args.train_epochs) // self.args.batch_size
         self.args.train_iterations = self.args.num_images // self.args.batch_size
-        lr_change = self.args.epoch // 4
+        lr_change = self.args.train_epochs // 4
         labeled_data = self.read_data(querry_dataloader)
         # unlabeled_data = self.read_data(unlabeled_dataloader, labels=False)
 
         optim_vae = optim.Adam(vae.parameters(), lr=5e-4)
-        # optim_task_model = optim.SGD(task_model.parameters(), lr=0.01, weight_decay=5e-4, momentum=0.9)
-        optim_task_model = optim.Adam(task_model.parameters(), lr=5e-4)
+        optim_task_model = optim.SGD(task_model.parameters(), lr=0.01, weight_decay=5e-4, momentum=0.9)
+        # optim_task_model = optim.Adam(task_model.parameters(), lr=5e-4)
         optim_discriminator = optim.Adam(discriminator.parameters(), lr=5e-4)
 
 
@@ -80,6 +80,7 @@ class Solver:
                 # unlabeled_imgs = unlabeled_imgs.cuda()
                 labels = labels.cuda()
 
+            ##############################################
             # task_model step
             with torch.no_grad():
                 _, _, mu, _ = vae(labeled_imgs)
@@ -90,9 +91,11 @@ class Solver:
             optim_task_model.step()
 
             total_task_loss += task_loss.item()
+            _, predicted = preds.max(1)
             total_task += labeled_imgs.size(0)
-            correct_task += preds.eq(labels).sum().item()
+            correct_task += predicted.eq(labels).sum().item()
 
+            ###############################################
             # VAE step
             for count in range(self.args.num_vae_steps):
                 recon, z, mu, logvar = vae(labeled_imgs)
@@ -110,12 +113,11 @@ class Solver:
                 with torch.no_grad():
                     preds = task_model(mu)
                     _, predicted = preds.max(1)
-                    lab_real_preds = predicted.eq(labels)
+                    lab_real_preds = predicted.eq(labels).float().unsqueeze(1)
                     
                 if self.args.cuda:
                     lab_real_preds = lab_real_preds.cuda()
                     # unlab_real_preds = unlab_real_preds.cuda()
-
                 dsc_loss = self.bce_loss(labeled_preds, lab_real_preds) # + \
                 #         self.bce_loss(unlabeled_preds, unlab_real_preds)
                 # total_vae_loss = unsup_loss  + transductive_loss + self.args.adversary_param * dsc_loss
@@ -136,13 +138,14 @@ class Solver:
                         # unlabeled_imgs = unlabeled_imgs.cuda()
                         labels = labels.cuda()
 
+            ############################################
             # Discriminator step
             for count in range(self.args.num_adv_steps):
                 with torch.no_grad():
                     _, _, mu, _ = vae(labeled_imgs)
                     preds = task_model(mu)
                     _, predicted = preds.max(1)
-                    lab_real_preds = predicted.eq(labels)
+                    lab_real_preds = predicted.eq(labels).float().unsqueeze(1)
                     # _, _, unlab_mu, _ = vae(unlabeled_imgs)
                 
                 labeled_preds = discriminator(mu)
@@ -178,7 +181,7 @@ class Solver:
                         labels = labels.cuda()
 
 
-            progress_bar(iter_count, self.args.train_iterations, 'vae_loss: %.3f|dsc_loss:%.3f|task_loss|:%.3f||dsc_acc:%.3f%%|task_acc:%.3f%%'
+            utils.progress_bar(iter_count, self.args.train_iterations, 'vae_loss: %.3f|dsc_loss:%.3f|task_loss|:%.3f||dsc_acc:%.3f%%|task_acc:%.3f%%'
                         % (total_vae_loss/(iter_count+1), total_dsc_loss/(iter_count+1), total_task_loss/(iter_count+1), 100.*correct_dsc/total_dsc, 100.*correct_task/total_task))    
 
             # if iter_count % 100 == 0:
@@ -187,20 +190,21 @@ class Solver:
             #     print('Current vae model loss: {:.4f}'.format(total_vae_loss.item()))
             #     print('Current discriminator model loss: {:.4f}'.format(dsc_loss.item()))
 
-            if iter_count % 1000 == 0:
-                acc = self.validate(task_model, val_dataloader)
-                if acc > best_acc:
-                    best_acc = acc
-                    best_model = copy.deepcopy(task_model)
+            # if iter_count != 0 and iter_count % 1000 == 0:
+            #     acc = self.validate(task_model, vae, val_dataloader)
+            #     if acc > best_acc:
+            #         best_acc = acc
+            #         best_model = copy.deepcopy(task_model)
+                    
                 
-                print('current step: {} acc: {}'.format(iter_count, acc))
-                print('best acc: ', best_acc)
+            #     print('current step: {} acc: {}'.format(iter_count, acc))
+            #     print('best acc: ', best_acc)
 
 
-        if self.args.cuda:
-            best_model = best_model.cuda()
+        # if self.args.cuda:
+        #     best_model = best_model.cuda()
 
-        final_accuracy = self.test(best_model)
+        final_accuracy = self.test(task_model, vae)
         return final_accuracy, vae, discriminator, task_model
 
 
@@ -213,7 +217,7 @@ class Solver:
         return querry_indices
                 
 
-    def validate(self, task_model, loader):
+    def validate(self, task_model, vae, loader):
         task_model.eval()
         total, correct = 0, 0
         for imgs, labels, _ in loader:
@@ -224,25 +228,29 @@ class Solver:
                 _, _, mu, _ = vae(imgs)
                 preds = task_model(mu)
 
-            preds = torch.argmax(preds, dim=1).cpu().numpy()
-            correct += accuracy_score(labels, preds, normalize=False)
+            _, predicted = preds.max(1)
             total += imgs.size(0)
+            correct += predicted.eq(labels).sum().item()
         return correct / total * 100
 
-    def test(self, task_model):
+    def test(self, task_model, vae):
         task_model.eval()
         total, correct = 0, 0
-        for imgs, labels in self.test_dataloader:
+        for batch_idx, (imgs, labels) in enumerate(self.test_dataloader):
             if self.args.cuda:
                 imgs = imgs.cuda()
+                labels = labels.cuda()
 
             with torch.no_grad():
                 _, _, mu, _ = vae(imgs)
-                preds = task_model(imgs)
-
-            preds = torch.argmax(preds, dim=1).cpu().numpy()
-            correct += accuracy_score(labels, preds, normalize=False)
+                preds = task_model(mu)
+            
+            _, predicted = preds.max(1)
             total += imgs.size(0)
+            correct += predicted.eq(labels).sum().item()
+            utils.progress_bar(batch_idx, len(self.test_dataloader), 'Acc: %.3f%% (%d/%d)'
+                % (100.*correct/total, correct, total))
+
         return correct / total * 100
 
 
