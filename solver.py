@@ -19,11 +19,13 @@ class Solver:
         self.args = args
         self.test_dataloader = test_dataloader
 
-        self.bce_loss = nn.BCELoss()
+        # self.bce_loss = nn.BCELoss()
+        # pos_weight = torch.tensor(0.25)
+        self.bce_loss = nn.BCEWithLogitsLoss()# (pos_weight=pos_weight)
         self.mse_loss = nn.MSELoss()
         self.ce_loss = nn.CrossEntropyLoss()
 
-        self.sampler = sampler.AdversarySampler(self.args.budget)
+        # self.sampler = sampler.AdversarySampler(self.args.budget)
 
 
     def read_data(self, dataloader, labels=True):
@@ -54,10 +56,10 @@ class Solver:
         discriminator.train()
         task_model.train()
 
-        if self.args.cuda:
-            vae = vae.cuda()
-            discriminator = discriminator.cuda()
-            task_model = task_model.cuda()
+        # if self.args.cuda:
+        #     vae = vae.cuda()
+        #     discriminator = discriminator.cuda()
+        #     task_model = task_model.cuda()
         
         best_acc = 0
         total_vae_loss = 0
@@ -184,7 +186,7 @@ class Solver:
                         labels = labels.cuda()
 
 
-            utils.progress_bar(iter_count, self.args.train_iterations, 'vae_loss: %.3f|dsc_loss:%.3f|task_loss|:%.3f||dsc_acc:%.3f%%|task_acc:%.3f%%'
+            utils.progress_bar(iter_count, self.args.train_iterations, 'vae_loss: %.3f|dsc_loss:%.3f|task_loss:%.3f||dsc_acc:%.3f%%|task_acc:%.3f%%'
                         % (total_vae_loss/(iter_count+1), total_dsc_loss/(iter_count+1), total_task_loss/(iter_count+1), 100.*correct_dsc/total_dsc, 100.*correct_task/total_task))    
 
             # if iter_count % 100 == 0:
@@ -240,7 +242,7 @@ class Solver:
     def test(self, task_model, vae, discriminator):
         task_model.eval()
         total, correct1, correct2, app = 0, 0, 0, 0
-        for batch_idx, (imgs, labels) in enumerate(self.test_dataloader):
+        for batch_idx, (imgs, labels, _) in enumerate(self.test_dataloader):
             if self.args.cuda:
                 imgs = imgs.cuda()
                 labels = labels.cuda()

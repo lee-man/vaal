@@ -24,6 +24,14 @@ def imagenet_transformer():
 #            torchvision.transforms.ToTensor(),
 #        ])
 
+def tinyimagenet_transform():
+    return transforms.Compose([
+        # transforms.RandomCrop(64, padding=4),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize((0.485, 0.456, 0.406), (0.209, 0.224, 0.225)),
+    ])
+
 
 _, term_width = os.popen('stty size', 'r').read().split()
 term_width = int(term_width)

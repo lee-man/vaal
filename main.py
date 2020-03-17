@@ -2,6 +2,7 @@ import torch
 from torchvision import datasets, transforms
 import torch.utils.data.sampler  as sampler
 import torch.utils.data as data
+import torch.backends.cudnn as cudnn
 
 import numpy as np
 import argparse
@@ -11,6 +12,7 @@ import os
 from custom_datasets import *
 import model
 import vgg
+import resnet
 from solver import Solver
 from utils import *
 import arguments
@@ -27,14 +29,16 @@ def main(args):
     if args.dataset == 'cifar10':
         test_dataloader = data.DataLoader(
                 datasets.CIFAR10(args.data_path, download=True, transform=cifar_transformer(), train=False),
-            batch_size=args.batch_size, drop_last=False)
+                batch_size=args.batch_size, drop_last=False)
 
-        train_dataset = CIFAR10(args.data_path)
-
+        # train_dataset = CIFAR10(args.data_path)
+        querry_dataloader = data.DataLoader(
+                CIFAR10(args.data_path),
+                batch_size=args.batch_size, drop_last=True)
         args.num_images = 50000
-        args.num_val = 5000
-        args.budget = 2500
-        args.initial_budget = 5000
+        # args.num_val = 5000
+        # args.budget = 2500
+        # args.initial_budget = 5000
         args.num_classes = 10
     elif args.dataset == 'cifar100':
         test_dataloader = data.DataLoader(
@@ -42,12 +46,27 @@ def main(args):
              batch_size=args.batch_size, drop_last=False)
 
         train_dataset = CIFAR100(args.data_path)
+        querry_dataloader = data.DataLoader(
+                CIFAR100(args.data_path),
+                batch_size=args.batch_size, shuffle=True, drop_last=True)
 
         args.num_val = 5000
         args.num_images = 50000
         args.budget = 2500
         args.initial_budget = 5000
         args.num_classes = 100
+    
+    elif args.dataset == 'tinyimagenet':
+        test_dataloader = data.DataLoader(
+            TinyImageNet(args.data_path, transform=tinyimagenet_transform(), train=False),
+                batch_size=args.batch_size, drop_last=False)
+            
+        querry_dataloader = data.DataLoader(
+            TinyImageNet(args.data_path, transform=tinyimagenet_transform(), train=True),
+                shuffle=True, batch_size=args.batch_size, drop_last=True)
+        args.num_classes = 200
+        args.num_images = 100000
+
 
     elif args.dataset == 'imagenet':
         test_dataloader = data.DataLoader(
@@ -66,18 +85,18 @@ def main(args):
 
     args.cuda = torch.cuda.is_available()
 
-    all_indices = set(np.arange(args.num_images))
+    # all_indices = set(np.arange(args.num_images))
     # val_indices = random.sample(all_indices, args.num_val)
     # all_indices = np.setdiff1d(list(all_indices), val_indices)
 
     # initial_indices = random.sample(list(all_indices), args.initial_budget)
     # sampler = data.sampler.SubsetRandomSampler(initial_indices)
-    sampler = data.sampler.SubsetRandomSampler(list(all_indices))
+    # sampler = data.sampler.SubsetRandomSampler(list(all_indices))
     # val_sampler = data.sampler.SubsetRandomSampler(val_indices)
 
     # dataset with labels available
-    querry_dataloader = data.DataLoader(train_dataset, sampler=sampler, 
-            batch_size=args.batch_size, drop_last=True)
+    # querry_dataloader = data.DataLoader(train_dataset, sampler=sampler, 
+    #         batch_size=args.batch_size, drop_last=True)
     # val_dataloader = data.DataLoader(train_dataset, sampler=val_sampler,
     #        batch_size=args.batch_size, drop_last=False)
     val_dataloader = None
@@ -94,10 +113,19 @@ def main(args):
     
     print('==> Building models...')
 
-    task_model = vgg.vgg16_bn(num_classes=args.num_classes)
+    # task_model = vgg.vgg16_bn(num_classes=args.num_classes)
+    task_model = resnet.ResNet34(num_classes=args.num_classes)
     # task_model = model.Approximator(args.latent_dim, args.num_classes)
     vae = model.VAE(args.latent_dim)
     discriminator = model.Discriminator(args.latent_dim)
+
+    if args.cuda:
+        vae = vae.cuda()
+        discriminator = discriminator.cuda()
+        task_model = task_model.cuda()
+        vae = torch.nn.DataParallel(vae)
+        discriminator = torch.nn.DataParallel(discriminator)
+        task_model = torch.nn.DataParallel(task_model)
 
 
     for epoch in range(args.train_epochs):

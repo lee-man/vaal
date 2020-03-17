@@ -32,14 +32,15 @@ class VAE(nn.Module):
             nn.Conv2d(512, 1024, 4, 2, 1, bias=False),            # B, 1024,  4,  4
             nn.BatchNorm2d(1024),
             nn.ReLU(True),
-            View((-1, 1024*2*2)),                                 # B, 1024*4*4
+            View((-1, 1024*4*4)),                                 # B, 1024*4*4
+            # View((-1, 1024*2*2))
         )
 
-        self.fc_mu = nn.Linear(1024*2*2, z_dim)                            # B, z_dim
-        self.fc_logvar = nn.Linear(1024*2*2, z_dim)                            # B, z_dim
+        self.fc_mu = nn.Linear(1024*4*4, z_dim)                            # B, z_dim
+        self.fc_logvar = nn.Linear(1024*4*4, z_dim)                            # B, z_dim
         self.decoder = nn.Sequential(
-            nn.Linear(z_dim, 1024*4*4),                           # B, 1024*8*8
-            View((-1, 1024, 4, 4)),                               # B, 1024,  8,  8
+            nn.Linear(z_dim, 1024*8*8),                           # B, 1024*8*8
+            View((-1, 1024, 8, 8)),                               # B, 1024,  8,  8
             nn.ConvTranspose2d(1024, 512, 4, 2, 1, bias=False),   # B,  512, 16, 16
             nn.BatchNorm2d(512),
             nn.ReLU(True),
@@ -95,7 +96,7 @@ class Discriminator(nn.Module):
             nn.Linear(512, 512),
             nn.ReLU(True),
             nn.Linear(512, 1),
-            nn.Sigmoid()
+            # nn.Sigmoid()
         )
         self.weight_init()
 
@@ -121,7 +122,7 @@ class Approximator(nn.Module):
             nn.Linear(512, num_classes)
         )
         self.weight_init()
-        
+
     def weight_init(self):
         for block in self._modules:
             for m in self._modules[block]:
